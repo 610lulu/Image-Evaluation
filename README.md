@@ -165,7 +165,7 @@ AestheticJudge
 
 ## 7. 后续扩展方向
 
-为了保持 MVP 简洁，以下功能暂未实现，但非常适合作为面试中的下一步方案：
+为了保持 MVP 简洁，以下功能暂未实现，但非常适合作为下一步方案：
 
 1. 接入真实 LLM / LangGraph Agent
 2. LLM-as-a-Judge / Multimodal Judge
