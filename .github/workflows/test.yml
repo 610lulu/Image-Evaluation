@@ -17,3 +17,4 @@ jobs:
       - run: pytest -q
       # CI intentionally uses mock mode: no API key, deterministic, zero model cost.
       - run: PYTHONPATH=src python -m image_evaluation.runner --agent mock
+      - run: PYTHONPATH=src python -m image_evaluation.benchmark --agents mock
