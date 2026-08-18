@@ -1,6 +1,6 @@
 # Image-Evaluation
 
-一个面试向的 **Photo Agent Evaluation MVP**。目标不是做完整相册产品，而是展示一套可解释、可回归的 Agent 质量评测闭环：
+目标不是做完整相册产品，而是展示一套可解释、可回归的 Agent 质量评测闭环：
 
 ```text
 Test Cases -> Agent -> Tool Calls / Result -> Evaluators -> Bad Cases / Report
@@ -190,17 +190,3 @@ rank_photos.limit: expected=3, actual=5
 
 GitHub Actions 只跑 `mock`：结果稳定、无需 Secret、不产生模型调用成本，适合作为 regression gate。真实 LLM Eval 更适合手动运行，或者以后在单独的 nightly / release workflow 中运行。
 
-## 9. 面试怎么讲
-
-> 我搭了一个 Photo Agent Evaluation Harness。测试集定义 query、expected tool trajectory 和 tool arguments；Runner 可以切换 deterministic mock Agent 或真实 LLM Function Calling Agent；Evaluator 分别从 Task Completion、Tool Correctness 和 Argument Correctness 做自动评分，失败 Case 会输出具体的错误参数用于 badcase 定位。CI 使用 mock 做稳定回归，真实 LLM Eval 用于评估模型/Prompt 变更。
-
-## 10. 下一步扩展
-
-1. 增加真实图片与 `AestheticJudge`
-2. Exposure / Color / Sharpness / Noise / Dynamic Range / Composition 影像维度
-3. 按 `tags` 做 Slice Analysis
-4. old vs new Agent Regression Diff
-5. LLM-as-a-Judge / Multimodal Judge
-6. LangGraph Agent Adapter
-7. Classification / Detection / Segmentation 指标
-8. FiftyOne Badcase 可视化
