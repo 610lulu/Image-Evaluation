@@ -1,0 +1,1 @@
+"""Photo Agent evaluation MVP."""
