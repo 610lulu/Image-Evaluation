@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "image-evaluation"
-version = "0.1.0"
+version = "0.2.0"
 description = "Interview-ready MVP for evaluating a photo agent"
 requires-python = ">=3.10"
+dependencies = ["openai>=2.45.0,<3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

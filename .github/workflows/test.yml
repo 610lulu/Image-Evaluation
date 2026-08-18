@@ -2,7 +2,7 @@ name: test
 
 on:
   push:
-    branches: [main, agent/photo-agent-eval-mvp]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -15,4 +15,5 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt
       - run: pytest -q
-      - run: PYTHONPATH=src python -m image_evaluation.runner
+      # CI intentionally uses mock mode: no API key, deterministic, zero model cost.
+      - run: PYTHONPATH=src python -m image_evaluation.runner --agent mock

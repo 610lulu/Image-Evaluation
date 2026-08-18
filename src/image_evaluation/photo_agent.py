@@ -22,12 +22,8 @@ class AgentResult:
         }
 
 
-class PhotoAgent:
-    """A tiny deterministic photo agent for interview/demo evaluation.
-
-    The goal is not to build a production photo search engine. The goal is to
-    expose an observable agent trajectory that can be evaluated reliably.
-    """
+class MockPhotoAgent:
+    """Deterministic photo agent used as the zero-cost evaluation baseline."""
 
     def run(self, query: str) -> AgentResult:
         tool_calls: list[ToolCall] = []
@@ -73,3 +69,7 @@ class PhotoAgent:
             tool_calls=tool_calls,
             selected_photo_ids=selected,
         )
+
+
+# Backward-compatible name used by the original MVP.
+PhotoAgent = MockPhotoAgent

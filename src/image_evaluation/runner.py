@@ -1,8 +1,10 @@
+import argparse
 import json
 from pathlib import Path
+from typing import Any
 
+from image_evaluation.agent_factory import build_agent
 from image_evaluation.evaluators import evaluate_case
-from image_evaluation.photo_agent import PhotoAgent
 
 
 def load_cases(path: str | Path) -> list[dict]:
@@ -10,8 +12,8 @@ def load_cases(path: str | Path) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def run_suite(case_path: str | Path = "data/cases.jsonl") -> dict:
-    agent = PhotoAgent()
+def run_suite(case_path: str | Path = "data/cases.jsonl", agent: Any | None = None) -> dict:
+    agent = agent or build_agent("mock")
     cases = load_cases(case_path)
     details = []
 
@@ -25,6 +27,7 @@ def run_suite(case_path: str | Path = "data/cases.jsonl") -> dict:
 
     return {
         "summary": {
+            "agent": agent.__class__.__name__,
             "total_cases": total,
             "passed_cases": passed,
             "pass_rate": round(passed / total, 4) if total else 0.0,
@@ -46,6 +49,7 @@ def write_reports(report: dict, output_dir: str | Path = "reports") -> None:
     lines = [
         "# Photo Agent Evaluation Report",
         "",
+        f"- Agent: {summary['agent']}",
         f"- Total cases: {summary['total_cases']}",
         f"- Passed cases: {summary['passed_cases']}",
         f"- Pass rate: {summary['pass_rate']:.2%}",
@@ -77,7 +81,20 @@ def write_reports(report: dict, output_dir: str | Path = "reports") -> None:
     (output / "report.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-if __name__ == "__main__":
-    report = run_suite()
-    write_reports(report)
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Evaluate the Photo Agent MVP")
+    parser.add_argument("--agent", choices=["mock", "llm"], default="mock")
+    parser.add_argument("--model", default=None, help="LLM model override; defaults to OPENAI_MODEL/gpt-5.6")
+    parser.add_argument("--case-path", default="data/cases.jsonl")
+    parser.add_argument("--output-dir", default=None)
+    args = parser.parse_args()
+
+    agent = build_agent(args.agent, model=args.model)
+    report = run_suite(args.case_path, agent=agent)
+    output_dir = args.output_dir or f"reports/{args.agent}"
+    write_reports(report, output_dir)
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
