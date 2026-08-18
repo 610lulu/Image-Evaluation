@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from image_evaluation.agent_factory import build_agent
+from image_evaluation.agent_factory import AGENT_MODES, build_agent
 from image_evaluation.evaluators import evaluate_case
 
 
@@ -82,16 +82,17 @@ def write_reports(report: dict, output_dir: str | Path = "reports") -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate the Photo Agent MVP")
-    parser.add_argument("--agent", choices=["mock", "llm"], default="mock")
-    parser.add_argument("--model", default=None, help="LLM model override; defaults to OPENAI_MODEL/gpt-5.6")
+    parser = argparse.ArgumentParser(description="Evaluate a Photo Agent implementation")
+    parser.add_argument("--agent", choices=AGENT_MODES, default="mock")
+    parser.add_argument("--model", default=None, help="Model override; defaults to OPENAI_MODEL/gpt-5.4")
     parser.add_argument("--case-path", default="data/cases.jsonl")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
     agent = build_agent(args.agent, model=args.model)
     report = run_suite(args.case_path, agent=agent)
-    output_dir = args.output_dir or f"reports/{args.agent}"
+    report_name = "responses" if args.agent == "llm" else args.agent
+    output_dir = args.output_dir or f"reports/{report_name}"
     write_reports(report, output_dir)
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
 
