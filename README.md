@@ -1,17 +1,21 @@
 # Image-Evaluation
 
-目标不是做完整相册产品，而是展示一套可解释、可回归的 Agent 质量评测闭环：
+目标不是做完整相册产品，而是展示一套可解释、可回归、可横向对比不同 Agent 框架的质量评测闭环：
 
 ```text
-Test Cases -> Agent -> Tool Calls / Result -> Evaluators -> Bad Cases / Report
+Test Cases -> Agent Adapter -> Tool Calls / Result -> Evaluators -> Bad Cases / Report
 ```
 
-V2 同时支持两种 Agent：
+当前支持四种运行模式：
 
 - `mock`：确定性 Mock Agent，零 API 成本，用于 CI 和框架回归。
-- `llm`：真实 LLM Function Calling Agent，用于测试意图理解、Tool Selection、参数生成和多步工具调用。
+- `responses`：直接使用 OpenAI Responses API，由本项目维护 Tool Calling Loop。
+- `openai-sdk`：使用 OpenAI Agents SDK，由 SDK 管理 Agent / Tool Loop。
+- `langgraph`：使用 LangChain `create_agent`，底层运行在 LangGraph runtime。
 
-> `llm` 模式里的 LLM 是真实的；`search_photos` / `rank_photos` 的后端目前仍是确定性 Stub。这样可以把评测重点放在 Agent 行为上，而不是先搭完整手机相册服务。
+`llm` 保留为 `responses` 的兼容别名。
+
+> 三种真实 Agent 的 LLM 是真实的；`search_photos` / `rank_photos` 后端仍是确定性 Stub。这样能在相同 Tool 环境下比较不同 Agent 框架的意图理解、Tool Selection、参数生成和任务完成质量。
 
 ## 1. 当前评测什么
 
@@ -42,36 +46,32 @@ rank_photos.limit=3
 ## 2. 架构
 
 ```text
-                  data/cases.jsonl
-                         |
-                         v
-               +-------------------+
-               |   Agent Runner    |
-               +---------+---------+
-                         |
-              +----------+----------+
-              |                     |
-              v                     v
-      MockPhotoAgent          LLMPhotoAgent
-                                  |
-                           Responses API
-                                  |
-                       Function Calling Loop
-                                  |
-                      +-----------+-----------+
-                      |                       |
-               search_photos             rank_photos
-                 (Stub)                    (Stub)
-                      +-----------+-----------+
-                                  |
-                                  v
-                             AgentResult
-                                  |
-                                  v
-                Task / Tool / Argument Evaluators
-                                  |
-                                  v
-                         report.json / report.md
+                    data/cases.jsonl
+                           |
+                           v
+                  +----------------+
+                  | Eval Runner    |
+                  +-------+--------+
+                          |
+       +------------------+------------------+
+       |                  |                  |
+       v                  v                  v
+ ResponsesPhotoAgent  OpenAIAgentsSDK    LangGraphPhotoAgent
+       |                  |                  |
+ Responses API        Agents SDK        LangGraph runtime
+       +------------------+------------------+
+                          |
+                 search_photos / rank_photos
+                       (Stub Tools)
+                          |
+                          v
+                     AgentResult
+                          |
+                          v
+          Task / Tool / Argument Evaluators
+                          |
+                          v
+                 report / benchmark report
 ```
 
 统一输出结构：
@@ -93,7 +93,7 @@ rank_photos.limit=3
 }
 ```
 
-只要未来的 LangGraph / Dify / 公司内部 Agent 能转换成这个结构，就可以继续复用现有 Evaluator。
+Evaluator 只依赖统一 `AgentResult`，不依赖具体 Agent 框架。
 
 ## 3. 安装
 
@@ -126,49 +126,112 @@ reports/mock/report.md
 pytest -q
 ```
 
-## 5. 运行真实 LLM Agent
+## 5. 运行真实 Agent
 
 配置 API Key：
 
 ```bash
 export OPENAI_API_KEY="your_api_key_here"
-export OPENAI_MODEL="gpt-5.6"   # 可替换成你可用的模型
+export OPENAI_MODEL="gpt-5.4"   # 可替换成你账号可用的模型
 ```
 
-然后运行：
+### Responses API
 
 ```bash
-PYTHONPATH=src python -m image_evaluation.runner --agent llm
+PYTHONPATH=src python -m image_evaluation.runner --agent responses
+```
+
+### OpenAI Agents SDK
+
+```bash
+PYTHONPATH=src python -m image_evaluation.runner --agent openai-sdk
+```
+
+### LangGraph
+
+```bash
+PYTHONPATH=src python -m image_evaluation.runner --agent langgraph
 ```
 
 也可以单次覆盖模型：
 
 ```bash
-PYTHONPATH=src python -m image_evaluation.runner --agent llm --model gpt-5.6
+PYTHONPATH=src python -m image_evaluation.runner --agent langgraph --model gpt-5.4
 ```
 
-LLM 模式会真实执行：
+每次模型实际执行的 Tool Name 和 Arguments 都会被记录，并与 `cases.jsonl` 中的 Ground Truth 比较。
+
+## 6. 一键 Benchmark
+
+默认比较三种真实 Agent：
+
+```bash
+PYTHONPATH=src python -m image_evaluation.benchmark
+```
+
+等价于：
 
 ```text
-User Query
-   -> LLM
-   -> search_photos Function Call
-   -> Tool Result
-   -> LLM
-   -> rank_photos Function Call（如需要）
-   -> Tool Result
-   -> Final Answer
+responses,openai-sdk,langgraph
 ```
 
-每次模型实际生成的 Tool Name 和 Arguments 都会被记录，并与 `cases.jsonl` 中的 Ground Truth 比较。
+也可以指定模式：
 
-## 6. 测试 Case
+```bash
+PYTHONPATH=src python -m image_evaluation.benchmark \
+  --agents mock,responses,openai-sdk,langgraph \
+  --model gpt-5.4
+```
+
+生成：
+
+```text
+reports/benchmark/benchmark.json
+reports/benchmark/benchmark.md
+```
+
+Benchmark 对比字段：
+
+```text
+Pass Rate
+Average Score
+Passed Cases
+Elapsed Time
+Error
+```
+
+> Benchmark 会真实调用模型；多框架 × 多 Case 会产生多次 API 请求和费用。CI 默认只跑 Mock。
+
+## 7. 测试 Case
 
 `data/cases.jsonl` 每一行是一条 Case。当前有 6 条 Case，覆盖时间、地点、夜景、对象、排除自拍和审美排序。
 
-## 7. Bad Case 怎么定位
+示例：
 
-例如真实 Agent 错误输出 `rank_photos(limit=5)`，但用户要求三张，报告会同时暴露：
+```json
+{
+  "id": "case_001",
+  "query": "找出去年在东京拍的夜景照片，排除自拍，然后选出最好看的三张。",
+  "expected_tools": ["search_photos", "rank_photos"],
+  "expected_arguments": {
+    "search_photos": {
+      "location": "Tokyo",
+      "time": "last_year",
+      "scene": "night",
+      "exclude": ["selfie"]
+    },
+    "rank_photos": {
+      "criterion": "aesthetic_quality",
+      "limit": 3
+    }
+  },
+  "expected_photo_count": 3
+}
+```
+
+## 8. Bad Case 怎么定位
+
+例如某个 Agent 错误输出 `rank_photos(limit=5)`，但用户要求三张，报告会同时暴露：
 
 ```text
 Task Completion: FAIL
@@ -186,7 +249,6 @@ rank_photos.limit: expected=3, actual=5
 | Tool Correctness | Planning / Tool Selection |
 | Argument Correctness | Intent / Constraint / Tool Args |
 
-## 8. 为什么 CI 只跑 Mock
+## 9. 为什么 CI 只跑 Mock
 
-GitHub Actions 只跑 `mock`：结果稳定、无需 Secret、不产生模型调用成本，适合作为 regression gate。真实 LLM Eval 更适合手动运行，或者以后在单独的 nightly / release workflow 中运行。
-
+GitHub Actions 只跑 `mock`：结果稳定、无需 Secret、不产生模型调用成本，适合作为 regression gate。真实 Agent Eval 和多框架 Benchmark 手动运行。
