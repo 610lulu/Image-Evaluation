@@ -1,11 +1,3 @@
-# Image-Evaluation
-
-一个面向面试展示的 **Photo Agent Evaluation MVP**。项目参考 DeepEval 的思路，但只保留最容易讲清楚、最容易运行的核心闭环：
-
-> Dataset → Photo Agent → Tool Calls → Evaluators → Batch Runner → Report → Regression Test
-
-目标不是做完整商业平台，而是证明你理解 **Agent 测试、自动化评测、Tool Call 验证、Badcase 分析和测试工程化**。
-
 ## 1. MVP 能做什么
 
 当前内置一个可控的 `PhotoAgent`，支持两个工具：
@@ -185,11 +177,3 @@ AestheticJudge
 8. GitHub Actions CI
 9. Classification / Detection / Segmentation 指标
 10. FiftyOne Badcase 可视化
-
-## 8. 面试怎么讲这个项目
-
-建议用下面这条主线：
-
-> 我做了一个轻量级相册 Agent 自动化评测框架。测试集使用 JSONL 管理，Runner 批量调用 Agent，并记录 Tool Calling trajectory。Evaluator 分别评估 Task Completion、Tool Correctness 和 Argument Correctness，再输出汇总指标与 Badcase 报告。对于确定性输出我优先用规则评测，以保证可重复和可回归；对于审美这类开放式问题，我会进一步引入 Multimodal LLM-as-a-Judge，并通过人工 Golden Set 校准。
-
-这能对应真实岗位中的：测试方案、测试集构建、自动化脚本、Agent 缺陷定位、测试报告和 AI 测试提效。
