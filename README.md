@@ -1,68 +1,101 @@
-## 1. MVP 能做什么
+# Image-Evaluation
 
-当前内置一个可控的 `PhotoAgent`，支持两个工具：
-
-- `search_photos`：按地点、时间、场景、对象、排除条件搜索照片
-- `rank_photos`：按 `aesthetic_quality` 对候选照片排序
-
-示例请求：
+一个面试向的 **Photo Agent Evaluation MVP**。目标不是做完整相册产品，而是展示一套可解释、可回归的 Agent 质量评测闭环：
 
 ```text
-找出去年在东京拍的夜景照片，排除自拍，然后选出最好看的三张。
+Test Cases -> Agent -> Tool Calls / Result -> Evaluators -> Bad Cases / Report
 ```
 
-预期 Agent 轨迹：
+V2 同时支持两种 Agent：
 
-```text
-search_photos(location=Tokyo, time=last_year, scene=night, exclude=[selfie])
-        ↓
-rank_photos(criterion=aesthetic_quality, limit=3)
-        ↓
-返回 3 张照片
-```
+- `mock`：确定性 Mock Agent，零 API 成本，用于 CI 和框架回归。
+- `llm`：真实 LLM Function Calling Agent，用于测试意图理解、Tool Selection、参数生成和多步工具调用。
 
-## 2. 评测指标
+> `llm` 模式里的 LLM 是真实的；`search_photos` / `rank_photos` 的后端目前仍是确定性 Stub。这样可以把评测重点放在 Agent 行为上，而不是先搭完整手机相册服务。
 
-MVP 先采用确定性评测，避免为了 Demo 引入外部 API Key。
+## 1. 当前评测什么
 
 ### Task Completion
 
-验证最终任务是否完成，例如用户要求 3 张照片，最终是否确实返回 3 张。
+验证最终任务是否完成，例如用户要求 3 张照片，最终是否返回 3 张。
 
 ### Tool Correctness
 
-验证 Agent 是否调用了正确的工具，以及调用顺序是否正确。
+验证工具调用及顺序，例如：
+
+```text
+search_photos -> rank_photos
+```
 
 ### Argument Correctness
 
-验证工具参数，例如：
-
-- `location=Tokyo`
-- `time=last_year`
-- `scene=night`
-- `exclude=[selfie]`
-
-这种确定性字段优先使用规则判断，而不是交给 LLM Judge。
-
-## 3. 项目结构
+验证 Function Call 参数是否准确，例如：
 
 ```text
-Image-Evaluation/
-├── data/
-│   └── cases.jsonl
-├── src/image_evaluation/
-│   ├── __init__.py
-│   ├── photo_agent.py
-│   ├── evaluators.py
-│   └── runner.py
-├── tests/
-│   └── test_evaluation.py
-├── pyproject.toml
-├── requirements.txt
-└── README.md
+location=Tokyo
+time=last_year
+scene=night
+exclude=[selfie]
+rank_photos.limit=3
 ```
 
-## 4. 快速运行
+## 2. 架构
+
+```text
+                  data/cases.jsonl
+                         |
+                         v
+               +-------------------+
+               |   Agent Runner    |
+               +---------+---------+
+                         |
+              +----------+----------+
+              |                     |
+              v                     v
+      MockPhotoAgent          LLMPhotoAgent
+                                  |
+                           Responses API
+                                  |
+                       Function Calling Loop
+                                  |
+                      +-----------+-----------+
+                      |                       |
+               search_photos             rank_photos
+                 (Stub)                    (Stub)
+                      +-----------+-----------+
+                                  |
+                                  v
+                             AgentResult
+                                  |
+                                  v
+                Task / Tool / Argument Evaluators
+                                  |
+                                  v
+                         report.json / report.md
+```
+
+统一输出结构：
+
+```json
+{
+  "answer": "已选出三张照片。",
+  "tool_calls": [
+    {
+      "name": "search_photos",
+      "arguments": {
+        "location": "Tokyo",
+        "time": "last_year",
+        "scene": "night"
+      }
+    }
+  ],
+  "selected_photo_ids": ["photo_001", "photo_002", "photo_003"]
+}
+```
+
+只要未来的 LangGraph / Dify / 公司内部 Agent 能转换成这个结构，就可以继续复用现有 Evaluator。
+
+## 3. 安装
 
 ```bash
 git clone https://github.com/610lulu/Image-Evaluation.git
@@ -72,108 +105,102 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## 4. 运行 Mock Agent
+
+不需要 API Key：
+
+```bash
+PYTHONPATH=src python -m image_evaluation.runner --agent mock
+```
+
+报告输出：
+
+```text
+reports/mock/report.json
+reports/mock/report.md
+```
+
 运行自动化测试：
 
 ```bash
 pytest -q
 ```
 
-运行完整评测：
+## 5. 运行真实 LLM Agent
+
+配置 API Key：
 
 ```bash
-PYTHONPATH=src python -m image_evaluation.runner
+export OPENAI_API_KEY="your_api_key_here"
+export OPENAI_MODEL="gpt-5.6"   # 可替换成你可用的模型
 ```
 
-运行后会生成：
+然后运行：
+
+```bash
+PYTHONPATH=src python -m image_evaluation.runner --agent llm
+```
+
+也可以单次覆盖模型：
+
+```bash
+PYTHONPATH=src python -m image_evaluation.runner --agent llm --model gpt-5.6
+```
+
+LLM 模式会真实执行：
 
 ```text
-reports/report.json
-reports/report.md
+User Query
+   -> LLM
+   -> search_photos Function Call
+   -> Tool Result
+   -> LLM
+   -> rank_photos Function Call（如需要）
+   -> Tool Result
+   -> Final Answer
 ```
 
-其中 `report.md` 包含：
+每次模型实际生成的 Tool Name 和 Arguments 都会被记录，并与 `cases.jsonl` 中的 Ground Truth 比较。
 
-- 总 Case 数
-- Pass Rate
-- Average Score
-- 每个 Case 的结果
-- Bad Case 及失败原因
+## 6. 测试 Case
 
-## 5. 测试集设计
+`data/cases.jsonl` 每一行是一条 Case。当前有 6 条 Case，覆盖时间、地点、夜景、对象、排除自拍和审美排序。
 
-`data/cases.jsonl` 每一行都是一条测试 Case：
+## 7. Bad Case 怎么定位
 
-```json
-{
-  "id": "case_001",
-  "query": "找出去年在东京拍的夜景照片，排除自拍，然后选出最好看的三张。",
-  "tags": ["search", "night", "ranking", "constraint"],
-  "expected_tools": ["search_photos", "rank_photos"],
-  "expected_arguments": {
-    "search_photos": {
-      "location": "Tokyo",
-      "time": "last_year",
-      "scene": "night",
-      "exclude": ["selfie"]
-    }
-  },
-  "expected_photo_count": 3
-}
-```
-
-`tags` 是为了后续做 Slice Analysis，例如：
+例如真实 Agent 错误输出 `rank_photos(limit=5)`，但用户要求三张，报告会同时暴露：
 
 ```text
-night
-portrait
-backlight
-motion_blur
-selfie
-ranking
+Task Completion: FAIL
+expected_photo_count=3, actual=5
+
+Argument Correctness: FAIL
+rank_photos.limit: expected=3, actual=5
 ```
 
-真实影像项目中可以继续扩展为曝光、白平衡、噪声、锐度、动态范围等摄影维度。
+因此可以区分：
 
-## 6. 为什么 MVP 不直接用 LLM-as-a-Judge
+| Metric | 主要定位层 |
+|---|---|
+| Task Completion | End-to-End 任务结果 |
+| Tool Correctness | Planning / Tool Selection |
+| Argument Correctness | Intent / Constraint / Tool Args |
 
-对于 Tool Name、Tool Arguments、返回数量这类确定性结果，规则评测具备：
+## 8. 为什么 CI 只跑 Mock
 
-- 可重复
-- 无额外成本
-- 易定位失败原因
-- 适合 CI 回归
+GitHub Actions 只跑 `mock`：结果稳定、无需 Secret、不产生模型调用成本，适合作为 regression gate。真实 LLM Eval 更适合手动运行，或者以后在单独的 nightly / release workflow 中运行。
 
-开放式问题才适合引入 Judge，例如：
+## 9. 面试怎么讲
 
-```text
-“这三张照片哪张最好看？”
-```
+> 我搭了一个 Photo Agent Evaluation Harness。测试集定义 query、expected tool trajectory 和 tool arguments；Runner 可以切换 deterministic mock Agent 或真实 LLM Function Calling Agent；Evaluator 分别从 Task Completion、Tool Correctness 和 Argument Correctness 做自动评分，失败 Case 会输出具体的错误参数用于 badcase 定位。CI 使用 mock 做稳定回归，真实 LLM Eval 用于评估模型/Prompt 变更。
 
-后续可新增：
+## 10. 下一步扩展
 
-```text
-AestheticJudge
-├── exposure
-├── color
-├── sharpness
-├── noise
-├── dynamic_range
-└── composition
-```
-
-可以由多模态模型评分，并用人工 Golden Set 做校准。
-
-## 7. 后续扩展方向
-
-为了保持 MVP 简洁，以下功能暂未实现，但非常适合作为下一步方案：
-
-1. 接入真实 LLM / LangGraph Agent
-2. LLM-as-a-Judge / Multimodal Judge
-3. Agent trajectory 更灵活的 strict / subset / unordered 匹配
-4. 按 `tags` 输出 Slice 指标
-5. old vs new 模型 Regression Diff
-6. 并发执行 10 万 Case
-7. FastAPI / Streamlit Dashboard
-8. GitHub Actions CI
-9. Classification / Detection / Segmentation 指标
-10. FiftyOne Badcase 可视化
+1. 增加真实图片与 `AestheticJudge`
+2. Exposure / Color / Sharpness / Noise / Dynamic Range / Composition 影像维度
+3. 按 `tags` 做 Slice Analysis
+4. old vs new Agent Regression Diff
+5. LLM-as-a-Judge / Multimodal Judge
+6. LangGraph Agent Adapter
+7. Classification / Detection / Segmentation 指标
+8. FiftyOne Badcase 可视化
