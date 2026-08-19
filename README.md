@@ -252,3 +252,6 @@ rank_photos.limit: expected=3, actual=5
 ## 9. 为什么 CI 只跑 Mock
 
 GitHub Actions 只跑 `mock`：结果稳定、无需 Secret、不产生模型调用成本，适合作为 regression gate。真实 Agent Eval 和多框架 Benchmark 手动运行。
+
+License
+Copyright © 2026 610LULU. All rights reserved. See LICENSE.
